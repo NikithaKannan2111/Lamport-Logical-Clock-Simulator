@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lamport Logical Clock Simulator</title>
+<style>
+:root{--bg:#0b1220;--panel:#121d31;--panel2:#18263d;--text:#e8eef8;--muted:#9fb0c8;--accent:#65d6c4;--line:#2b3c57;--orange:#ffbf69}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(135deg,#0b1220,#101b30);color:var(--text);font:15px/1.5 system-ui,Segoe UI,Arial,sans-serif}
+header{padding:28px 5vw 20px;border-bottom:1px solid var(--line)}h1{margin:0;font-size:clamp(24px,4vw,36px)}header p{color:var(--muted);margin:7px 0 0}
+main{max-width:1150px;margin:24px auto;padding:0 20px 40px}.intro{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:16px 18px;margin-bottom:18px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:18px}.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:18px;min-width:0}
+h2{font-size:18px;margin:0 0 14px}h3{font-size:15px;margin:0 0 8px;color:var(--muted)}
+.processes{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.process{background:var(--panel2);border:1px solid var(--line);border-radius:12px;padding:14px;text-align:center}
+.process strong{display:block;font-size:18px}.clock{font-size:32px;font-weight:750;color:var(--accent);margin:4px 0}.small{font-size:12px;color:var(--muted)}
+label{display:block;color:var(--muted);font-size:13px;margin:10px 0 5px}select,button{font:inherit;border-radius:8px;padding:10px 12px;border:1px solid var(--line)}
+select{width:100%;background:#0d1728;color:var(--text)}button{background:var(--accent);color:#06201d;font-weight:700;cursor:pointer;border:0}button.secondary{background:#263852;color:var(--text);border:1px solid var(--line)}button:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;flex-wrap:wrap;gap:9px;margin-top:12px}.formrow{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.log{max-height:300px;overflow:auto}.event{padding:10px 12px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:12px}.event:last-child{border:0}.tag{color:var(--orange);font-size:12px;white-space:nowrap}
+.timeline{display:grid;gap:8px}.lane{display:grid;grid-template-columns:55px 1fr;gap:10px;align-items:center}.lane b{color:var(--accent)}.lane-track{height:36px;background:#0d1728;border:1px solid var(--line);border-radius:8px;display:flex;align-items:center;padding:0 9px;gap:7px;overflow:auto}.dot{background:#284b60;color:#dffbf5;border-radius:6px;padding:3px 7px;font-size:12px;white-space:nowrap}
+.note{color:var(--muted);font-size:13px}.full{grid-column:1/-1}.footer{color:var(--muted);text-align:center;padding:20px;font-size:12px}
+@media(max-width:760px){.grid{grid-template-columns:1fr}.full{grid-column:auto}.processes{grid-template-columns:1fr 1fr 1fr}}
+</style>
+</head>
+<body>
+<header><h1>Lamport Logical Clock Simulator</h1><p>Visualize event ordering and message passing across distributed processes.</p></header>
+<main>
+<section class="intro"><strong>How it works:</strong> Each process has a logical clock. An internal or send event increments its clock by 1. On receiving a message timestamped T, the receiver updates its clock to <code>max(local clock, T) + 1</code>.</section>
+<div class="grid">
+<section class="panel full"><h2>Process clocks</h2><div class="processes" id="processes"></div></section>
+<section class="panel"><h2>Generate an event</h2>
+<label for="processSelect">Process</label><select id="processSelect"><option value="P1">P1</option><option value="P2">P2</option><option value="P3">P3</option></select>
+<div class="actions"><button id="internalBtn">Add internal event</button></div>
+<hr style="border:0;border-top:1px solid var(--line);margin:18px 0">
+<h3>Message passing</h3><div class="formrow">
+<div><label for="sender">Sender</label><select id="sender"><option>P1</option><option>P2</option><option>P3</option></select></div>
+<div><label for="receiver">Receiver</label><select id="receiver"><option>P2</option><option>P1</option><option>P3</option></select></div></div>
+<div class="actions"><button id="sendBtn">Send message</button><button class="secondary" id="receiveBtn">Receive next message</button></div>
+<p class="note" id="queueInfo">No messages waiting.</p>
+</section>
+<section class="panel"><h2>Event log</h2><div class="log" id="log"><p class="note">No events yet. Add an event to begin.</p></div>
+<div class="actions"><button class="secondary" id="resetBtn">Reset simulation</button></div></section>
+<section class="panel full"><h2>Process event timeline</h2><div class="timeline" id="timeline"></div><p class="note">The timeline groups events by process. The event log records the order in which actions were simulated.</p></section>
+<section class="panel full"><h2>Algorithm reference</h2>
+<ol><li>Before every local/internal event, increment the process clock by 1.</li><li>Before sending a message, increment the sender clock and attach that timestamp to the message.</li><li>When receiving a message with timestamp T, set the receiver clock to <code>max(receiver clock, T) + 1</code>.</li><li>The resulting timestamps respect the “happened-before” relation.</li></ol></section>
+</div></main>
+<div class="footer">Mini project • Distributed Computing • Lamport Logical Clocks</div>
+<script>
+const ids=["P1","P2","P3"];let clocks={P1:0,P2:0,P3:0},queues={P1:[],P2:[],P3:[]},events=[],seq=0;
+const $=id=>document.getElementById(id);
+function record(p,type,detail,time){seq++;events.push({seq,p,type,detail,time});render();}
+function render(){
+ $("processes").innerHTML=ids.map(p=>`<div class="process"><strong>${p}</strong><div class="clock">${clocks[p]}</div><div class="small">Logical clock</div><div class="small">${queues[p].length} message(s) waiting</div></div>`).join("");
+ $("log").innerHTML=events.length?events.slice().reverse().map(e=>`<div class="event"><div><b>#${e.seq} · ${e.p}</b><div class="small">${e.detail}</div></div><span class="tag">${e.type} · t=${e.time}</span></div>`).join(""):'<p class="note">No events yet. Add an event to begin.</p>';
+ $("timeline").innerHTML=ids.map(p=>`<div class="lane"><b>${p}</b><div class="lane-track">${events.filter(e=>e.p===p).map(e=>`<span class="dot" title="${e.detail}">${e.type} ${e.time}</span>`).join("")||'<span class="small">Waiting for events</span>'}</div></div>`).join("");
+ const total=ids.reduce((n,p)=>n+queues[p].length,0);$("queueInfo").textContent=total?`${total} message(s) waiting. Select the intended receiver and click Receive next message.`:"No messages waiting.";
+ $("receiveBtn").disabled=!total;
+}
+$("internalBtn").onclick=()=>{const p=$("processSelect").value;clocks[p]++;record(p,"Internal", "Internal event",clocks[p]);};
+$("sendBtn").onclick=()=>{const from=$("sender").value,to=$("receiver").value;if(from===to){alert("Choose two different processes.");return;}clocks[from]++;const stamp=clocks[from];queues[to].push({from,to,stamp});record(from,"Send",`Message sent to ${to} (timestamp ${stamp})`,stamp);};
+$("receiveBtn").onclick=()=>{const to=$("receiver").value;if(!queues[to].length){alert(`No message is waiting for ${to}.`);return;}const msg=queues[to].shift();clocks[to]=Math.max(clocks[to],msg.stamp)+1;record(to,"Receive",`Message received from ${msg.from} (sent at ${msg.stamp})`,clocks[to]);};
+$("resetBtn").onclick=()=>{clocks={P1:0,P2:0,P3:0};queues={P1:[],P2:[],P3:[]};events=[];seq=0;render();};
+render();
+</script>
+</body></html>
